@@ -3,7 +3,7 @@ const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 const axios = require('axios');
 const cron = require('node-cron');
-
+const {publishEmailEvents}= require('./pubsub')
 const app = express()
 
 app.use(express.json())
@@ -33,16 +33,38 @@ async function check_url (){
     const urls = await prisma.monitor.findMany()
     console.log(urls)
     for (const urlentry of urls){
-        const { Url } = urlentry
+        const { id,Url,email,status } = urlentry
         console.log(Url)
 
         try {
         
             const response = await axios.get(Url)
+            await prisma.monitor.update({
+                where : {id},
+                data : {
+                    status : 'UP',
+                }
+            })
             console.log(`${Url} is up`)
         } catch (error) {
             console.log(`${Url} is down: ${error.message}`)
+
+            await prisma.monitor.update({
+                where : {id},
+                data : {
+                    status : 'DOWN',
+                }
+            })
+
+
+            publishEmailEvents({
+                Url,
+                email,
+                status: 'DOWN',
+            
+            })
         }
+       
     }
 }
 
